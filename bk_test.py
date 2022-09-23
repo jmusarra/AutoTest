@@ -2,8 +2,12 @@
 
 import serial
 
+def find_TTY():
+    return
 
-bk = serial.Serial(port = "/dev/ttyUSB0", baudrate = 9600, timeout = 1) #todo: add bytesize, parity, stopbits
+
+
+bk = serial.Serial(port = "/dev/BK_1687", baudrate = 9600, timeout = 1) #todo: add bytesize, parity, stopbits
 bk.write(b'GETD\r')
 bk_response = bk.readline()
 print(f'Response: {bk_response}')
