@@ -1,14 +1,17 @@
 #/usr/bin/env python3
 
-import serial, os, psycopg, datetime, time
+import serial, os, psycopg, datetime, time, requests
 from reportlab.pdfgen import canvas
-from reportlab.pagesizes import letter
+from reportlab.lib.pagesizes import letter
 
 db_connection = psycopg.connect(host='localhost', dbname='jsm', user='jsm')
 cursor = db_connection.cursor()
 
-def make_pdf():
-	c = canvas.Canvas("Report.pdf")
+def make_pdf(pdf_data):
+	print('Generating PDF....')
+	page = canvas.Canvas('Test Report', pagesize = letter)
+	page.drawString(350, 350, "Hurry up and do this part")
+	width, height = letter
 	print('PDF generation is not yet implemented 😿')
 	return
 
@@ -50,13 +53,13 @@ bk_comm('SOUT1') #First thing, turn off the PSU output. Turn it back on when rea
 #If PSU display reads "O P OFF" the last command has succeeded, yay I guess
 
 #Begin logging first, while output is off, then turn output on
-def do_test(piece_name, show_name, strip_length, active, duration=600, interval=5): #TODO: Add annotation for beginning of test with piece name and time of day
+def do_test(piece_name, strip_length, show_name, active, duration=600, interval=5): #TODO: Add annotation for beginning of test with piece name and time of day
     if active == 'yes':
     	bk_comm('SOUT0')
     	time.sleep(1)
-    test_begin = time.monotonic()
+    test_begin_time = time.monotonic()
     iteration = 1
-    while time.monotonic() - test_begin <= duration:
+    while time.monotonic() - test_begin_time <= duration:
         display_values = bk_comm('GETD') #GETD is short for Get Display values. As opposed to (manually-input) settings values.
         assert display_values[0:5], "What now"
         print(f'Response: {display_values}')
@@ -71,24 +74,36 @@ def do_test(piece_name, show_name, strip_length, active, duration=600, interval=
         write_to_db(data)
         time.sleep(interval)
     bk_comm('SOUT1')
+    data = [piece_name, 0, show_name, strip_length, display_volts]
+    test_end_time = time.monotonic()
+    send_annotation(piece_name, test_begin_time, test_end_time)
     return data
+
+def send_annotation(piece_name, test_begin_time, test_end_time):
+	#TODO: This
+	pass
 
 #TODO: print /dev devices, both symlink and target
 #udev rule makes (unfortunately) any CP102x USB-serial device get symlinked as /dev/BK_1687
 print("Press 't' to begin test, 'o' to toggle output")
 control = input()
 if control == 't':
-	now = time.monotonic()
-    do_test(piece_name = 'SR2-1', show_name = '2022 H&R Block', strip_length = 8, active = 'no', duration = 10, interval = 1.9)
+    print('Name of piece?')
+    piece_name = input()
+    print('LED tape length?')
+    strip_length = input()
+    now = time.monotonic()
+    do_test(piece_name, strip_length, show_name = 'testing', active = 'no', duration = 10, interval = 3)
     bk_comm('SOUT0')
-    do_test(piece_name = 'SR2-1', show_name = '2022 H&R Block', strip_length = 8, active = 'yes',duration = 120, interval = 5)
+    pdf_data = do_test(piece_name, strip_length, show_name = '2023 Disney Lighthouse', active = 'yes', duration = 300, interval = 5)
     time.sleep(3)
     bk_comm('SOUT1')
-    test_duration = 
-    make_pdf()
+    test_duration = 'whatever'
+    make_pdf(pdf_data)
     print("Test Concluded! Hurrah!")
-    if control == 'o':
-    	bk_comm()
+if control == 'o':
+    bk_comm('SOUT0')
+    time.sleep(60)
 
 
 #TODO: create test session, and create results PDF
