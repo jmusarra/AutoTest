@@ -1,5 +1,11 @@
 #/usr/bin/env python3
 
+__author__ = "John Musarra"
+__license__ = "Creative Commons CC-BY"
+__email__ = "john@mightymu.net"
+__maintainer__ = "John Musarra"
+__version__ = "alpha"
+
 import serial, os, psycopg, datetime, time, requests
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
