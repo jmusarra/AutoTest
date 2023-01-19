@@ -1,12 +1,12 @@
 #/usr/bin/env python3
 
 __author__ = "John Musarra"
-__license__ = "Creative Commons CC-BY"
+__license__ = "Apache 2.0"
 __email__ = "john@mightymu.net"
 __maintainer__ = "John Musarra"
 __version__ = "alpha"
 
-import serial, os, psycopg, time, requests, sys, random
+import serial, os, psycopg, time, requests, sys, random. sqlite
 from datetime import datetime, timedelta
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
