@@ -6,7 +6,8 @@ __email__ = "john@mightymu.net"
 __maintainer__ = "John Musarra"
 __version__ = "alpha"
 
-import serial, os, psycopg, datetime, time, requests
+import serial, os, psycopg, time, requests, sys, random
+from datetime import datetime, timedelta
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 
@@ -35,17 +36,30 @@ def bk_comm(command):
 	    print('PANic! PaniIcC!')
     if len(response) > 1:
         response_string = response.decode('UTF-8').strip('\r')
-        print(f'Response: {response_string}')
+        #print(f'Response: {response_string}')
         return response_string
     else:
         error = 'No response. Is PSU on?'
         print(error)
         pass
 
+def generate_test_id():
+    n = random.getrandbits(32)
+    if n==0: return "0"
+    chars="0123456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+    length=len(chars)
+    result=""
+    remain=n
+    while remain>0:
+        pos = remain % length
+        remain = remain // length
+        result = chars[pos] + result
+    return result
+
 def write_to_db(data):
     cursor.execute(
     	'INSERT INTO jsm (timestamp, piece, current, "Show", length_of_tape, voltage) VALUES(%s, %s, %s, %s, %s, %s)',
-    	(datetime.datetime.now(), data[0], data[1], data[2], data[3], data[4]))
+    	(datetime.now(), data[0], data[1], data[2], data[3], data[4]))
     db_connection.commit()
 
 device = "/dev/ttyUSB0" #dammit #"/dev/BK_1687" #symlinked to whatever the real TTY is
@@ -59,54 +73,72 @@ bk_comm('SOUT1') #First thing, turn off the PSU output. Turn it back on when rea
 #If PSU display reads "O P OFF" the last command has succeeded, yay I guess
 
 #Begin logging first, while output is off, then turn output on
-def do_test(piece_name, strip_length, show_name, active, duration=600, interval=5): #TODO: Add annotation for beginning of test with piece name and time of day
-    if active == 'yes':
-    	bk_comm('SOUT0')
-    	time.sleep(1)
-    test_begin_time = time.monotonic()
-    iteration = 1
-    while time.monotonic() - test_begin_time <= duration:
+def do_test(piece_name, strip_length, output, show_name, duration, interval): #TODO: Add annotation for beginning of test with piece name and time of day
+    print(f'Duration: {duration} seconds')
+    test_begin_time = datetime.now()
+    if output == "on":
+        bk_comm('SOUT0')
+    else:
+        bk_comm('SOUT1')
+    while datetime.now() - test_begin_time <= timedelta(seconds=duration):
+        time.sleep(interval)
         display_values = bk_comm('GETD') #GETD is short for Get Display values. As opposed to (manually-input) settings values.
         assert display_values[0:5], "What now"
         print(f'Response: {display_values}')
         display_volts = (int(display_values[0:5])/1000)
         display_curr = (int(display_values[5:-4])/100)
         print(str(display_values[9]))
-        print(f'Iteration = {iteration}')
         print(f'Volts: {display_volts}')
         print(f'Current: {display_curr}')
-        iteration += 1
         data = [piece_name, display_curr, show_name, strip_length, display_volts]
         write_to_db(data)
-        time.sleep(interval)
-    bk_comm('SOUT1')
-    data = [piece_name, 0, show_name, strip_length, display_volts]
-    test_end_time = time.monotonic()
-    send_annotation(piece_name, test_begin_time, test_end_time)
-    return data
+    # data = [piece_name, 0, show_name, strip_length, display_volts] - WHY
+    test_end_time = datetime.now()
+    return data, test_begin_time, test_end_time
 
-def send_annotation(piece_name, test_begin_time, test_end_time):
-	#TODO: This
-	pass
+def send_annotation(piece_name, test_begin_time, test_end_time, test_id):
+    dashboard_uid = "uz1kXiV4z"
+    panel_id = 1
+    annotation_data = {
+        "dashboardUID": dashboard_uid,
+        "panelID": panel_id,
+        "time": "",
+        "timeEnd": "",
+        "tags": "",
+        "text": f'Piece Name: {piece_name}, Test ID: {test_id}'
+}
+    requests.post('http://localhost:300/api/annotations/', data = annotation_data)
+    print("sending grafana annotation...")
+    print(f'Test Begin: {test_begin_time}')
+    print(f'Test End: {test_end_time}')
+    #TODO: This
+    pass
 
 #TODO: print /dev devices, both symlink and target
 #udev rule makes (unfortunately) any CP102x USB-serial device get symlinked as /dev/BK_1687
 print("Press 't' to begin test, 'o' to toggle output")
 control = input()
 if control == 't':
-    print('Name of piece?')
-    piece_name = input()
-    print('LED tape length?')
-    strip_length = input()
-    now = time.monotonic()
-    do_test(piece_name, strip_length, show_name = 'testing', active = 'no', duration = 10, interval = 3)
-    bk_comm('SOUT0')
-    pdf_data = do_test(piece_name, strip_length, show_name = '2023 Disney Lighthouse', active = 'yes', duration = 300, interval = 5)
-    time.sleep(3)
-    bk_comm('SOUT1')
-    test_duration = 'whatever'
-    make_pdf(pdf_data)
-    print("Test Concluded! Hurrah!")
+    try:
+        test_id = generate_test_id()
+        print(f'Test ID: {test_id}')
+        print('Name of piece?')
+        piece_name = input()
+        print('LED tape length (in decimal feet)?')
+        strip_length = input()
+        do_test(piece_name, strip_length, output = 'off', show_name = 'testing', duration = 9, interval = 3)
+        do_test(piece_name, strip_length, output = 'on', show_name = 'testing', duration = 125, interval = 5)
+        do_test(piece_name, strip_length, output = 'off', show_name = 'testing', duration = 10, interval = 3)
+        send_annotation(piece_name, test_begin_time, test_end_time)
+        pdf_data = "Time of test: , Test Duration: , Max Current: , Wattage: "
+        bk_comm('SOUT1')
+        print(f'Test Duration: {test_duration}')
+        make_pdf(pdf_data)
+        print("Test Concluded! Hurrah!")
+    except KeyboardInterrupt:
+        bk_comm('SOUT1') #turn output off
+        print("Exiting.")
+        sys.exit()
 if control == 'o':
     bk_comm('SOUT0')
     time.sleep(60)
