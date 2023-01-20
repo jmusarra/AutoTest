@@ -59,14 +59,16 @@ def generate_test_id():
 
 def write_to_db(data):
     cursor.execute(
-    	'INSERT INTO jsm (timestamp, piece, current, "Show", length_of_tape, voltage) VALUES(%s, %s, %s, %s, %s, %s)',
-    	(datetime.now(), data[0], data[1], data[2], data[3], data[4]))
+        'INSERT INTO jsm (timestamp, piece, test_id, current, "Show", length_of_tape, voltage) VALUES(%s, %s, %s, %s, %s, %s, %s)',
+        (datetime.now(), data[0], data[1], data[2], data[3], data[4], data[5]))
     db_connection.commit()
 
 device = "/dev/ttyUSB0" #dammit #"/dev/BK_1687" #symlinked to whatever the real TTY is
 #Is the PSU plugged in?
 if (os.path.exists(device)):
 	device_connected = True
+else:
+	device_connected = False
 print(f'Device Connected? {device_connected}')
 #how to detect if the PSU is powered on....
 bk = serial.Serial(port = "/dev/BK_1687", baudrate = 9600, timeout = 0.5) #todo: add bytesize, parity, stopbits
@@ -74,7 +76,7 @@ bk_comm('SOUT1') #First thing, turn off the PSU output. Turn it back on when rea
 #If PSU display reads "O P OFF" the last command has succeeded, yay I guess
 
 #Begin logging first, while output is off, then turn output on
-def do_test(piece_name, strip_length, output, show_name, duration, interval): #TODO: Add annotation for beginning of test with piece name and time of day
+def do_test(piece_name, strip_length, test_id, output, show_name, duration, interval): #TODO: Add annotation for beginning of test with piece name and time of day
     print(f'Duration: {duration} seconds')
     test_start = datetime.now()
     if output == "on":
@@ -92,7 +94,7 @@ def do_test(piece_name, strip_length, output, show_name, duration, interval): #T
         print('Time Elapsed: [DO THIS]')
         print(f'Volts: {display_volts}')
         print(f'Current: {display_curr}')
-        data = [piece_name, display_curr, show_name, strip_length, display_volts]
+        data = [piece_name, test_id, display_curr, show_name, strip_length, display_volts]
         write_to_db(data)
     # data = [piece_name, 0, show_name, strip_length, display_volts] - WHY
     test_end_time = datetime.now()
@@ -102,14 +104,13 @@ def send_annotation(piece_name, test_begin_time, test_end_time, test_id):
     print("sending grafana annotation...")
     auth_url = 'http://localhost:3000/'
     headers = {'Authorization': 'Bearer eyJrIjoiSjA4ZndVR21vSzN1RVZjODZqdHJBTENTY2lqT04wenEiLCJuIjoiYXV0b190ZXN0IiwiaWQiOjF9', 'content-type': 'application/json', 'accept': 'application/json'}
-    #pprint.pprint(headers)
+    annotation_text = f'Piece Name: {piece_name} | Test ID: {test_id}'
     dashboard_uid = 'uz1kXiV4z'
     panel_id = 2
-    annotation_data = {'dashboardUID':dashboard_uid,'time':test_begin_time, 'timeEnd':test_end_time,'text':test_id}
+    annotation_data = {'dashboardUID':dashboard_uid,'time':test_begin_time, 'timeEnd':test_end_time,'text':annotation_text}
     response = requests.post('http://localhost:3000/api/annotations', data = json.dumps(annotation_data), headers = headers)
-    print(response.text)
-    print(f'Test Begin: {test_begin_time}')
-    print(f'Test End: {test_end_time}')
+    #print(f'Test Begin: {test_begin_time}')
+    #print(f'Test End: {test_end_time}')
     return response
 
 #TODO: print /dev devices, both symlink and target
@@ -126,13 +127,11 @@ if control == 't':
         strip_length = input()
         test_begin = datetime.now().timestamp()
         test_begin_time = int(test_begin*1000)
-        print(test_begin_time)
-        do_test(piece_name, strip_length, output = 'off', show_name = 'testing', duration = 9, interval = 3)
-        do_test(piece_name, strip_length, output = 'on', show_name = 'testing', duration = 30, interval = 5)
-        do_test(piece_name, strip_length, output = 'off', show_name = 'testing', duration = 10, interval = 3)
+        do_test(piece_name, strip_length, test_id, output = 'off', show_name = 'testing', duration = 9, interval = 3)
+        do_test(piece_name, strip_length, test_id, output = 'on', show_name = 'testing', duration = 120, interval = 5)
+        do_test(piece_name, strip_length, test_id, output = 'off', show_name = 'testing', duration = 10, interval = 3)
         test_end = datetime.now().timestamp()
         test_end_time = int(test_end*1000)
-        print(test_end_time)
         send_annotation(piece_name, test_begin_time, test_end_time, test_id)
         pdf_data = "Time of test: , Test Duration: , Max Current: , Wattage: "
         bk_comm('SOUT1')
