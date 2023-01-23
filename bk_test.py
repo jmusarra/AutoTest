@@ -55,7 +55,7 @@ def generate_test_id():
         pos = remain % length
         remain = remain // length
         result = chars[pos] + result
-    return result
+    return result[0:6]
 
 def write_to_db(data):
     cursor.execute(
@@ -69,6 +69,8 @@ if (os.path.exists(device)):
 	device_connected = True
 else:
 	device_connected = False
+	print('Power supply not found. Exiting.')
+	sys.exit()
 print(f'Device Connected? {device_connected}')
 #how to detect if the PSU is powered on....
 bk = serial.Serial(port = "/dev/BK_1687", baudrate = 9600, timeout = 0.5) #todo: add bytesize, parity, stopbits
@@ -103,7 +105,7 @@ def do_test(piece_name, strip_length, test_id, output, show_name, duration, inte
 def send_annotation(piece_name, test_begin_time, test_end_time, test_id):
     print("sending grafana annotation...")
     auth_url = 'http://localhost:3000/'
-    headers = {'Authorization': 'Bearer eyJrIjoiSjA4ZndVR21vSzN1RVZjODZqdHJBTENTY2lqT04wenEiLCJuIjoiYXV0b190ZXN0IiwiaWQiOjF9', 'content-type': 'application/json', 'accept': 'application/json'}
+    headers = {'Authorization': constants.grafana_token, 'content-type': 'application/json', 'accept': 'application/json'}
     annotation_text = f'Piece Name: {piece_name} | Test ID: {test_id}'
     dashboard_uid = 'uz1kXiV4z'
     panel_id = 2
