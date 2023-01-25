@@ -15,6 +15,14 @@ from reportlab.lib.pagesizes import letter
 db_connection = psycopg.connect(host='localhost', dbname='jsm', user='jsm')
 cursor = db_connection.cursor()
 
+def strfdelta(tdelta, fmt):
+    """ Formats timedelta object as a nicer string
+	from https://stackoverflow.com/questions/8906926/formatting-timedelta-objects"""
+    d = {"days": tdelta.days}
+    d["hours"], rem = divmod(tdelta.seconds, 3600)
+    d["minutes"], d["seconds"] = divmod(rem, 60)
+    return fmt.format(**d)
+
 def make_pdf(test_id):
     sql_get_from_id = 'SELECT "Show", piece, test_id, MAX(current), MAX(timestamp) - MIN(timestamp) as duration, length_of_tape, MAX(voltage) FROM jsm WHERE test_id = %s GROUP BY test_id, "Show", piece, length_of_tape'
     with psycopg.connect(host='localhost', dbname='jsm', user='jsm') as conn:
@@ -23,17 +31,19 @@ def make_pdf(test_id):
            for record in cur:
                show_name = record[0]
                piece_name = record[1]
-               max_current = record[3]
-               duration = record[4]
-               tape_length = record[5]
+               max_current = (record[3])
+               duration = strfdelta(record[4], "{days} days {hours}:{minutes}:{seconds}")
+               tape_length = round(record[5],2)
                voltage = record[6]
     cur.close()
+    print(f'Voltage is a {type(voltage)}')
+    print(f'Length is a {type(tape_length)}')
     print('Generating PDF....')
-    document_title = '/home/jsm/Desktop/TestReports/' + show_name + "-" + piece_name + '.pdf'
-    watts_per_ft = (voltage * max_current) / tape_length
+    document_title = f'/home/jsm/Desktop/TestReports/{show_name.strip()}/{piece_name.strip()}-{test_id}.pdf'
+    watts_per_ft = round((voltage * max_current) / tape_length ,2)
     print(f'Watts / ft: {watts_per_ft}')
     print(document_title)
-    page = canvas.Canvas('test-report.pdf', pagesize = letter)
+    page = canvas.Canvas(document_title, pagesize = letter)
     page.drawString(250,750, 'Report Generated: ')
     page.drawString(355,750, datetime.now().strftime('%Y-%m-%d %-I:%M%p'))
     page.drawString(15, 750, "Show Name: ")
@@ -46,6 +56,7 @@ def make_pdf(test_id):
     page.drawString(100,600, test_id)
     page.drawString(15,550, "Test Duration: ")
     page.drawString(100,550, str(duration))
+    print(f'Duration is a {(type(duration))}')
     page.drawString(15,500,"Supply Voltage: ")
     page.drawString(110,500, str(voltage))
     page.drawString(15,450, "Length of Tape:")
@@ -55,6 +66,7 @@ def make_pdf(test_id):
     width, height = letter
     page.showPage()
     page.save()
+    print(f'Saved as {document_title}')
 
 def bk_comm(command):
     #send command to BK PSU, receive and return response
@@ -111,6 +123,7 @@ bk_comm('SOUT1') #First thing, turn off the PSU output. Turn it back on when rea
 #If PSU display reads "O P OFF" the last command has succeeded, yay I guess
 
 #Begin logging first, while output is off, then turn output on
+#TODO delay 0.5* duration before write_to_db, 0.5*duration after
 def do_test(piece_name, strip_length, test_id, show_name, output, duration, interval): #TODO: Add annotation for beginning of test with piece name and time of day
     print(f'Duration: {duration} seconds')
     test_start = datetime.now()
@@ -119,7 +132,7 @@ def do_test(piece_name, strip_length, test_id, show_name, output, duration, inte
     else:
         bk_comm('SOUT1')
     while datetime.now() - test_start <= timedelta(seconds=duration):
-        time.sleep(interval)
+        time.sleep(0.5*duration)
         display_values = bk_comm('GETD') #GETD is short for Get Display values. As opposed to (manually-input) settings values.
         assert display_values[0:5], "What now"
         # print(f'Response: {display_values}')
@@ -131,6 +144,7 @@ def do_test(piece_name, strip_length, test_id, show_name, output, duration, inte
         print(f'Current: {display_curr}')
         data = [piece_name, test_id, display_curr, show_name, strip_length, display_volts]
         write_to_db(data)
+        time.sleep(0.5*duration)
     # data = [piece_name, 0, show_name, strip_length, display_volts] - WHY
     test_end_time = datetime.now()
     return data
@@ -165,7 +179,7 @@ if control == 't':
         test_begin = datetime.now().timestamp()
         test_begin_time = int(test_begin*1000)
         do_test(piece_name, strip_length, test_id, show_name, output = 'off', duration = 9, interval = 3)
-        do_test(piece_name, strip_length, test_id, show_name, output = 'on',  duration = 300, interval = 5)
+        do_test(piece_name, strip_length, test_id, show_name, output = 'on',  duration = 60, interval = 5)
         do_test(piece_name, strip_length, test_id, show_name, output = 'off', duration = 10, interval = 3)
         test_end = datetime.now().timestamp()
         test_end_time = int(test_end*1000)
