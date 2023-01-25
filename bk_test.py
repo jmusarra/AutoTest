@@ -15,13 +15,46 @@ from reportlab.lib.pagesizes import letter
 db_connection = psycopg.connect(host='localhost', dbname='jsm', user='jsm')
 cursor = db_connection.cursor()
 
-def make_pdf(pdf_data):
-	print('Generating PDF....')
-	page = canvas.Canvas('Test Report', pagesize = letter)
-	page.drawString(350, 350, "Hurry up and do this part")
-	width, height = letter
-	print('PDF generation is not yet implemented 😿')
-	return
+def make_pdf(test_id):
+    sql_get_from_id = 'SELECT "Show", piece, test_id, MAX(current), MAX(timestamp) - MIN(timestamp) as duration, length_of_tape, MAX(voltage) FROM jsm WHERE test_id = %s GROUP BY test_id, "Show", piece, length_of_tape'
+    with psycopg.connect(host='localhost', dbname='jsm', user='jsm') as conn:
+        with conn.cursor() as cur:
+           cur.execute(sql_get_from_id, (test_id,))
+           for record in cur:
+               show_name = record[0]
+               piece_name = record[1]
+               max_current = record[3]
+               duration = record[4]
+               tape_length = record[5]
+               voltage = record[6]
+    cur.close()
+    print('Generating PDF....')
+    document_title = '/home/jsm/Desktop/TestReports/' + show_name + "-" + piece_name + '.pdf'
+    watts_per_ft = (voltage * max_current) / tape_length
+    print(f'Watts / ft: {watts_per_ft}')
+    print(document_title)
+    page = canvas.Canvas('test-report.pdf', pagesize = letter)
+    page.drawString(250,750, 'Report Generated: ')
+    page.drawString(355,750, datetime.now().strftime('%Y-%m-%d %-I:%M%p'))
+    page.drawString(15, 750, "Show Name: ")
+    page.drawString(100,750, show_name)
+    page.drawString(15, 700, "Piece Name: ")
+    page.drawString(100,700, piece_name)
+    page.drawString(15,650, "Max Current: ")
+    page.drawString(100,650, str(max_current))
+    page.drawString(15,600, "Test ID: ")
+    page.drawString(100,600, test_id)
+    page.drawString(15,550, "Test Duration: ")
+    page.drawString(100,550, str(duration))
+    page.drawString(15,500,"Supply Voltage: ")
+    page.drawString(110,500, str(voltage))
+    page.drawString(15,450, "Length of Tape:")
+    page.drawString(110,450, str(tape_length))
+    page.drawString(15,400, "Watts / ft: ")
+    page.drawString(100,400, str(watts_per_ft))
+    width, height = letter
+    page.showPage()
+    page.save()
 
 def bk_comm(command):
     #send command to BK PSU, receive and return response
@@ -78,7 +111,7 @@ bk_comm('SOUT1') #First thing, turn off the PSU output. Turn it back on when rea
 #If PSU display reads "O P OFF" the last command has succeeded, yay I guess
 
 #Begin logging first, while output is off, then turn output on
-def do_test(piece_name, strip_length, test_id, output, show_name, duration, interval): #TODO: Add annotation for beginning of test with piece name and time of day
+def do_test(piece_name, strip_length, test_id, show_name, output, duration, interval): #TODO: Add annotation for beginning of test with piece name and time of day
     print(f'Duration: {duration} seconds')
     test_start = datetime.now()
     if output == "on":
@@ -123,22 +156,24 @@ if control == 't':
     try:
         test_id = generate_test_id()
         print(f'Test ID: {test_id}')
+        print('Name of show?')
+        show_name = input()
         print('Name of piece?')
         piece_name = input()
         print('LED tape length (in decimal feet)?')
         strip_length = input()
         test_begin = datetime.now().timestamp()
         test_begin_time = int(test_begin*1000)
-        do_test(piece_name, strip_length, test_id, output = 'off', show_name = 'testing', duration = 9, interval = 3)
-        do_test(piece_name, strip_length, test_id, output = 'on', show_name = 'testing', duration = 120, interval = 5)
-        do_test(piece_name, strip_length, test_id, output = 'off', show_name = 'testing', duration = 10, interval = 3)
+        do_test(piece_name, strip_length, test_id, show_name, output = 'off', duration = 9, interval = 3)
+        do_test(piece_name, strip_length, test_id, show_name, output = 'on',  duration = 300, interval = 5)
+        do_test(piece_name, strip_length, test_id, show_name, output = 'off', duration = 10, interval = 3)
         test_end = datetime.now().timestamp()
         test_end_time = int(test_end*1000)
         send_annotation(piece_name, test_begin_time, test_end_time, test_id)
         pdf_data = "Time of test: , Test Duration: , Max Current: , Wattage: "
         bk_comm('SOUT1')
         # print(f'Test Duration: {test_duration}')
-        make_pdf(pdf_data)
+        make_pdf(test_id)
         print("Test Concluded! Hurrah!")
     except KeyboardInterrupt:
         bk_comm('SOUT1') #turn output off
