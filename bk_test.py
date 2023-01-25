@@ -32,7 +32,7 @@ def make_pdf(test_id):
                show_name = record[0]
                piece_name = record[1]
                max_current = (record[3])
-               duration = strfdelta(record[4], "{days} days {hours}:{minutes}:{seconds}")
+               duration = strfdelta(record[4], "{hours}h {minutes}m {seconds}s")
                tape_length = round(record[5],2)
                voltage = record[6]
     cur.close()
