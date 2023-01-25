@@ -11,9 +11,14 @@ import constants
 from datetime import datetime, timedelta
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 db_connection = psycopg.connect(host='localhost', dbname='jsm', user='jsm')
 cursor = db_connection.cursor()
+pdfmetrics.registerFont(TTFont('Roboto', 'Roboto-Medium.ttf'))
+pdfmetrics.registerFont(TTFont('RobotoBold', 'Roboto-Bold.ttf'))
+pdfmetrics.registerFont(TTFont('RobotoMono', 'RobotoMono-Medium.ttf'))
 
 def strfdelta(tdelta, fmt):
     """ Formats timedelta object as a nicer string
@@ -36,32 +41,35 @@ def make_pdf(test_id):
                tape_length = round(record[5],2)
                voltage = record[6]
     cur.close()
-    print(f'Voltage is a {type(voltage)}')
-    print(f'Length is a {type(tape_length)}')
     print('Generating PDF....')
     document_title = f'/home/jsm/Desktop/TestReports/{show_name.strip()}/{piece_name.strip()}-{test_id}.pdf'
     watts_per_ft = round((voltage * max_current) / tape_length ,2)
-    print(f'Watts / ft: {watts_per_ft}')
-    print(document_title)
     page = canvas.Canvas(document_title, pagesize = letter)
-    page.drawString(250,750, 'Report Generated: ')
-    page.drawString(355,750, datetime.now().strftime('%Y-%m-%d %-I:%M%p'))
+    #TODO redo these with fstrings
+    page.setFont('RobotoBold', 16)
+    page.drawString(315,750, 'Report Generated: ')
+    page.drawString(450,750, datetime.now().strftime('%Y-%m-%d %-I:%M%p'))
     page.drawString(15, 750, "Show Name: ")
-    page.drawString(100,750, show_name)
+    page.drawString(115,750, show_name)
+    page.setFont('RobotoBold', 12)
     page.drawString(15, 700, "Piece Name: ")
-    page.drawString(100,700, piece_name)
     page.drawString(15,650, "Max Current: ")
-    page.drawString(100,650, str(max_current))
     page.drawString(15,600, "Test ID: ")
-    page.drawString(100,600, test_id)
     page.drawString(15,550, "Test Duration: ")
-    page.drawString(100,550, str(duration))
-    print(f'Duration is a {(type(duration))}')
     page.drawString(15,500,"Supply Voltage: ")
-    page.drawString(110,500, str(voltage))
     page.drawString(15,450, "Length of Tape:")
-    page.drawString(110,450, str(tape_length))
     page.drawString(15,400, "Watts / ft: ")
+    page.setFont('Roboto', 12)
+    # regual text
+    
+    page.drawString(100,700, piece_name)
+    page.setFont('RobotoMono',12)
+    # Numbery stuff
+    page.drawString(100,650, str(max_current))
+    page.drawString(100,600, test_id)
+    page.drawString(100,550, str(duration))
+    page.drawString(110,500, str(voltage))
+    page.drawString(110,450, str(tape_length))
     page.drawString(100,400, str(watts_per_ft))
     width, height = letter
     page.showPage()
@@ -132,7 +140,7 @@ def do_test(piece_name, strip_length, test_id, show_name, output, duration, inte
     else:
         bk_comm('SOUT1')
     while datetime.now() - test_start <= timedelta(seconds=duration):
-        time.sleep(0.5*duration)
+        time.sleep(0.5*interval)
         display_values = bk_comm('GETD') #GETD is short for Get Display values. As opposed to (manually-input) settings values.
         assert display_values[0:5], "What now"
         # print(f'Response: {display_values}')
@@ -144,16 +152,16 @@ def do_test(piece_name, strip_length, test_id, show_name, output, duration, inte
         print(f'Current: {display_curr}')
         data = [piece_name, test_id, display_curr, show_name, strip_length, display_volts]
         write_to_db(data)
-        time.sleep(0.5*duration)
+        time.sleep(0.5*interval)
     # data = [piece_name, 0, show_name, strip_length, display_volts] - WHY
     test_end_time = datetime.now()
     return data
 
 def send_annotation(piece_name, test_begin_time, test_end_time, test_id):
-    print("sending grafana annotation...")
+    print("Sending Grafana annotation...")
     auth_url = 'http://localhost:3000/'
     headers = {'Authorization': constants.grafana_token, 'content-type': 'application/json', 'accept': 'application/json'}
-    annotation_text = f'Piece Name: {piece_name} | Test ID: {test_id}'
+    annotation_text = f'Piece Name: {piece_name} 💡 Test ID: {test_id}'
     dashboard_uid = 'uz1kXiV4z'
     panel_id = 2
     annotation_data = {'dashboardUID':dashboard_uid,'time':test_begin_time, 'timeEnd':test_end_time,'text':annotation_text}
