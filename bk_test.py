@@ -21,7 +21,7 @@ pdfmetrics.registerFont(TTFont('RobotoBold', 'Roboto-Bold.ttf'))
 pdfmetrics.registerFont(TTFont('RobotoMono', 'RobotoMono-Medium.ttf'))
 
 def strfdelta(tdelta, fmt):
-    """ Formats timedelta object as a nicer string
+    """ Formats timedelta object as a nicer string. For printing test duration.
 	from https://stackoverflow.com/questions/8906926/formatting-timedelta-objects"""
     d = {"days": tdelta.days}
     d["hours"], rem = divmod(tdelta.seconds, 3600)
@@ -37,14 +37,17 @@ def make_pdf(test_id):
                show_name = record[0]
                piece_name = record[1]
                max_current = (record[3])
-               duration = strfdelta(record[4], "{hours}h {minutes}m {seconds}s")
+               duration = strfdelta(record[4], "{hours}h:{minutes}m:{seconds}s")
                tape_length = round(record[5],2)
                voltage = record[6]
     cur.close()
+    document_path = f'/home/jsm/Desktop/TestReports/{show_name.strip()}/'
+    if not os.path.isdir(document_path):
+    	os.makedirs(document_path)
     print('Generating PDF....')
-    document_title = f'/home/jsm/Desktop/TestReports/{show_name.strip()}/{piece_name.strip()}-{test_id}.pdf'
+    document_title = f'{piece_name.strip()}-{test_id}.pdf'
     watts_per_ft = round((voltage * max_current) / tape_length ,2)
-    page = canvas.Canvas(document_title, pagesize = letter)
+    page = canvas.Canvas(document_path + document_title, pagesize = letter)
     #TODO redo these with fstrings
     page.setFont('RobotoBold', 16)
     page.drawString(315,750, 'Report Generated: ')
@@ -60,8 +63,7 @@ def make_pdf(test_id):
     page.drawString(15,450, "Length of Tape:")
     page.drawString(15,400, "Watts / ft: ")
     page.setFont('Roboto', 12)
-    # regual text
-    
+    # regular text
     page.drawString(100,700, piece_name)
     page.setFont('RobotoMono',12)
     # Numbery stuff
@@ -74,7 +76,7 @@ def make_pdf(test_id):
     width, height = letter
     page.showPage()
     page.save()
-    print(f'Saved as {document_title}')
+    print(f'Saved as {document_path}{document_title}')
 
 def bk_comm(command):
     #send command to BK PSU, receive and return response
