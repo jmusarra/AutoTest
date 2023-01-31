@@ -6,3 +6,5 @@ Creates a serial-over USB connection to the power supply and runs a current test
 on a connected piece of LED. Sends results to a local sqlite3 database.
 A locally-hosted Grafana (https://grafana.com/grafana/) instance can then display
 the test data as a time-series graph. A PDF of the test results is also generated.
+
+To Do: Replace PSU control with SACN output to dimmers + measurement contraption
